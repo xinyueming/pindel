@@ -1,0 +1,29 @@
+# Compiled files
+*.o
+*.d
+
+# Executables (keep main tools)
+# pindel
+# pindel2vcf
+# sam2pindel
+# pindel2vcf4tcga
+
+# Test and demo files
+test/
+demo/
+
+# Development files
+devtools/
+.*.swp
+*~
+
+# Build artifacts
+src/*.o
+src/*.d
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
