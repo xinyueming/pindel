@@ -24,9 +24,9 @@ __version__ = "0.1.0"
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _tool_path(name):
-    """Resolve a sibling binary path relative to this script's directory."""
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+def _tool_path(*parts):
+    """Resolve a path relative to this script's directory."""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), *parts)
 
 
 def _run(cmd, label):
@@ -76,9 +76,20 @@ def cmd_pindel2vcf(args):
 
 def cmd_anno(args):
     """Run ANNOVAR table_annovar.pl for gene annotation."""
-    # TODO: implement subprocess call to annovar_scripts/table_annovar.pl
-    print("[anno] Not yet implemented")
-    return 0
+    out = args.out if args.out else os.path.splitext(os.path.basename(args.input_vcf))[0]
+    cmd = [
+        "perl",
+        _tool_path("annovar_scripts", "table_annovar.pl"),
+        args.input_vcf,
+        args.db_path,
+        "--buildver", args.buildver,
+        "--protocol", args.protocol,
+        "--operation", args.operation,
+        "--nastring", args.nastring,
+        "--outfile", out,
+        "--vcfinput",
+    ]
+    return _run(cmd, "anno")
 
 
 def cmd_filter(args):
