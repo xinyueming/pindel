@@ -39,12 +39,26 @@ def _run(cmd, label):
     return result.returncode
 
 
+def _check_file(path, label="file"):
+    """Check if a file/directory exists. Returns 1 with error message if not."""
+    if not os.path.exists(path):
+        print(f"Error: {label} not found: {path}", file=sys.stderr)
+        return 1
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Subcommand implementations
 # ---------------------------------------------------------------------------
 
 def cmd_pindel(args):
     """Call the pindel executable to detect structural variants."""
+    rc = _check_file(args.fasta, "Reference FASTA")
+    if rc:
+        return rc
+    rc = _check_file(args.config_file, "Config file")
+    if rc:
+        return rc
     cmd = [
         _tool_path("pindel"),
         "-f", args.fasta,
@@ -60,6 +74,9 @@ def cmd_pindel(args):
 
 def cmd_pindel2vcf(args):
     """Call pindel2vcf to convert Pindel output to VCF format."""
+    rc = _check_file(args.reference, "Reference FASTA")
+    if rc:
+        return rc
     cmd = [
         _tool_path("pindel2vcf"),
         "-P", args.pindel_output_root,
@@ -77,6 +94,12 @@ def cmd_pindel2vcf(args):
 
 def cmd_anno(args):
     """Run ANNOVAR table_annovar.pl for gene annotation."""
+    rc = _check_file(args.input_vcf, "Input VCF")
+    if rc:
+        return rc
+    rc = _check_file(args.db_path, "ANNOVAR database directory")
+    if rc:
+        return rc
     out = args.out if args.out else os.path.splitext(os.path.basename(args.input_vcf))[0]
     cmd = [
         "perl",
@@ -95,6 +118,9 @@ def cmd_anno(args):
 
 def cmd_filter(args):
     """Filter annotated VCF by gene/transcript and output as TSV table."""
+    rc = _check_file(args.input_vcf, "Input VCF")
+    if rc:
+        return rc
     header_fields = [
         "CHROM", "POS", "ID", "REF", "ALT", "Gene", "Transcript",
         "SVTYPE", "SVLEN", "Insertion", "CDS", "AA",
@@ -257,8 +283,8 @@ def _parse_vcf_records(vcf_path, target_genes, target_transcripts, gene_transcri
                     af = round(vd / dp, 4) if dp > 0 else 0
                     ad = ad_raw
                 else:
-                    vd = ad_parts[0] if ad_parts else "."
-                    dp = vd
+                    vd = "."
+                    dp = "."
                     af = "."
                     ad = ad_raw
             else:
@@ -378,9 +404,9 @@ def build_parser():
         help="Filter annotated VCF by gene/transcript and output as table",
     )
     p_filter.add_argument("input_vcf", help="Annotated VCF file (*_multianno.vcf)")
-    p_filter.add_argument("--gene", default=None, help="Gene name(s), comma-separated (e.g. FLT3,KMT2A)")
-    p_filter.add_argument("--transcript", default=None, help="Transcript ID(s), comma-separated")
-    p_filter.add_argument("--gene-transcript-pair", action="append", default=None, help="Gene:transcript pair (e.g. FLT3:NM_004119.3, repeatable)")
+    p_filter.add_argument("--gene", default=None, help="Gene name(s), comma-separated. Multiple filter types use OR logic (e.g. FLT3,KMT2A)")
+    p_filter.add_argument("--transcript", default=None, help="Transcript ID(s), comma-separated. Multiple filter types use OR logic")
+    p_filter.add_argument("--gene-transcript-pair", action="append", default=None, help="Gene:transcript pair (e.g. FLT3:NM_004119.3, repeatable). Multiple filter types use OR logic")
     p_filter.add_argument("-o", "--output", default=None, help="Output file path (default: stdout)")
     p_filter.set_defaults(func=cmd_filter)
 
