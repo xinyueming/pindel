@@ -59,9 +59,19 @@ def cmd_pindel(args):
 
 def cmd_pindel2vcf(args):
     """Call pindel2vcf to convert Pindel output to VCF format."""
-    # TODO: implement subprocess call to ./pindel2vcf
-    print("[pindel2vcf] Not yet implemented")
-    return 0
+    cmd = [
+        _tool_path("pindel2vcf"),
+        "-P", args.pindel_output_root,
+        "-r", args.reference,
+        "-R", args.reference_name,
+        "-d", args.reference_date,
+        "-e", str(args.min_supporting_reads),
+        "-he", str(args.het_cutoff),
+        "-ho", str(args.hom_cutoff),
+    ]
+    if args.vcf:
+        cmd.extend(["-v", args.vcf])
+    return _run(cmd, "pindel2vcf")
 
 
 def cmd_anno(args):
