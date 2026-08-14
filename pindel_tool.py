@@ -13,10 +13,29 @@ Usage:
 """
 
 import argparse
+import os
 import subprocess
 import sys
 
 __version__ = "0.1.0"
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _tool_path(name):
+    """Resolve a sibling binary path relative to this script's directory."""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+
+
+def _run(cmd, label):
+    """Run a subprocess, streaming stdout/stderr, and return its exit code."""
+    print(f"[{label}] Running: {' '.join(cmd)}")
+    result = subprocess.run(cmd)
+    if result.returncode != 0:
+        print(f"[{label}] Failed with exit code {result.returncode}", file=sys.stderr)
+    return result.returncode
 
 
 # ---------------------------------------------------------------------------
@@ -25,9 +44,17 @@ __version__ = "0.1.0"
 
 def cmd_pindel(args):
     """Call the pindel executable to detect structural variants."""
-    # TODO: implement subprocess call to ./pindel
-    print("[pindel] Not yet implemented")
-    return 0
+    cmd = [
+        _tool_path("pindel"),
+        "-f", args.fasta,
+        "-i", args.config_file,
+        "-o", args.output_prefix,
+        "-c", args.chromosome,
+        "-T", str(args.number_of_threads),
+        "-a", str(args.additional_mismatch),
+        "-M", str(args.minimum_support_for_event),
+    ]
+    return _run(cmd, "pindel")
 
 
 def cmd_pindel2vcf(args):
