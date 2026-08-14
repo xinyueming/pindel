@@ -259,6 +259,58 @@ echo "/data/normal.bam   350    NORMAL" >> tn_config.txt
 - 已建立索引（`.bai` 文件）
 - 包含正确的头信息
 
+## ANNOVAR 注释
+
+### 内含子变异 cDNA 坐标注释
+
+Pindel 检测的结构变异可能位于内含子区域。本仓库修改了 ANNOVAR 源代码，使内含子变异的注释自动输出到 `AAChange.refGeneWithVer` 列，与外显子变异格式保持一致。
+
+**特性**：
+- 自动计算内含子变异的 cDNA 坐标
+- 只保留每个转录本最近的外显子注释
+- 输出格式添加基因名前缀
+
+```bash
+# 运行 ANNOVAR 注释（自动启用内含子 cDNA 坐标计算）
+perl table_annovar.pl input.vcf /path/to/humandb/ \
+    -buildver hg38 \
+    -protocol refGeneWithVer \
+    -operation g \
+    -nastring . \
+    -vcfinput \
+    -out output
+```
+
+### 输出格式
+
+| 列名 | 内含子变异 | 外显子变异 |
+|------|-----------|-----------|
+| Func.refGeneWithVer | intron | exonic |
+| Gene.refGeneWithVer | 基因名 | 基因名 |
+| GeneDetail.refGeneWithVer | . | cDNA 注释 |
+| ExonicFunc.refGeneWithVer | . | 功能类型 |
+| AAChange.refGeneWithVer | cDNA 注释 | 氨基酸改变 |
+
+### 注释格式说明
+
+内含子变异注释格式：`DEAF1:NM_021008.4:exon11:c.1504-2107->AAAAA`
+
+| 字段 | 含义 |
+|------|------|
+| DEAF1 | 基因名 |
+| NM_021008.4 | 转录本 ID |
+| exon11 | 最近的外显子 |
+| c.1504 | 外显子末端的 cDNA 位置 |
+| -2107 | 内含子中的距离（负值=下游，正值=上游） |
+| ->AAAAA | 变异类型（插入/删除/替换） |
+
+### 源代码修改
+
+修改了 `annovar_scripts/table_annovar.pl`：
+1. 将内含子变异的 cDNA 注释从 `GeneDetail` 列移动到 `AAChange` 列
+2. 添加 `filter_intronic_annotation` 函数，筛选每个转录本最近的外显子注释
+3. 添加基因名前缀到注释输出
+
 ## 版本信息
 
 - Pindel version: 0.2.5b9
