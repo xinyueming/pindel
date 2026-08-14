@@ -14,6 +14,7 @@ Usage:
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 
@@ -93,10 +94,216 @@ def cmd_anno(args):
 
 
 def cmd_filter(args):
-    """Filter annotated VCF by gene/transcript and output table format."""
-    # TODO: implement VCF parsing and filtering
-    print("[filter] Not yet implemented")
+    """Filter annotated VCF by gene/transcript and output as TSV table."""
+    header_fields = [
+        "CHROM", "POS", "ID", "REF", "ALT", "Gene", "Transcript",
+        "SVTYPE", "SVLEN", "Insertion", "CDS", "AA",
+        "GT", "AD", "VD", "DP", "AF", "Sample",
+    ]
+
+    # Parse filter targets
+    target_genes = set(args.gene.split(",")) if args.gene else None
+    target_transcripts = set(args.transcript.split(",")) if args.transcript else None
+    gene_transcript_pairs = {}  # gene -> set(transcripts)
+    if args.gene_transcript_pair:
+        for pair in args.gene_transcript_pair:
+            g, t = pair.split(":", 1)
+            gene_transcript_pairs.setdefault(g, set()).add(t)
+
+    # Parse VCF
+    records = _parse_vcf_records(
+        args.input_vcf,
+        target_genes,
+        target_transcripts,
+        gene_transcript_pairs,
+    )
+
+    # Output
+    lines = ["\t".join(header_fields)]
+    for rec in records:
+        lines.append("\t".join(str(rec.get(f, ".")) for f in header_fields))
+
+    out_text = "\n".join(lines) + "\n"
+    if args.output:
+        with open(args.output, "w") as fh:
+            fh.write(out_text)
+        print(f"[filter] Wrote {len(records)} record(s) to {args.output}")
+    else:
+        sys.stdout.write(out_text)
     return 0
+
+
+# ---------------------------------------------------------------------------
+# VCF parsing helpers
+# ---------------------------------------------------------------------------
+
+def _parse_info(info_str):
+    """Parse VCF INFO field into a dict. Values stay as raw strings."""
+    info = {}
+    for token in info_str.split(";"):
+        if "=" in token:
+            k, v = token.split("=", 1)
+            info[k] = v
+        else:
+            info[token] = True
+    return info
+
+
+def _parse_aachange(aachange_str):
+    """Parse AAChange.refGeneWithVer into list of dicts.
+
+    Format: GENE:TRANSCRIPT:exonN:cDNA:AA, comma-separated.
+    Encoded semicolons (\\x3b) decode to ','.
+    """
+    aachange_str = aachange_str.replace("\\x3b", ",")
+    entries = []
+    for entry in aachange_str.split(","):
+        parts = entry.split(":")
+        if len(parts) >= 5:
+            entries.append({
+                "gene": parts[0],
+                "transcript": parts[1],
+                "exon": parts[2],
+                "cds": parts[3],
+                "aa": parts[4],
+            })
+        elif len(parts) == 2:
+            # Minimal: GENE:TRANSCRIPT
+            entries.append({
+                "gene": parts[0],
+                "transcript": parts[1],
+                "exon": ".",
+                "cds": ".",
+                "aa": ".",
+            })
+    return entries
+
+
+def _matches_filter(gene, transcript, target_genes, target_transcripts, gene_transcript_pairs):
+    """Check if a gene/transcript combo matches any of the filter criteria."""
+    # No filter set → pass everything
+    if target_genes is None and target_transcripts is None and not gene_transcript_pairs:
+        return True
+
+    # gene-transcript pair match
+    if gene_transcript_pairs:
+        if gene in gene_transcript_pairs and transcript in gene_transcript_pairs[gene]:
+            return True
+
+    # gene-only match
+    if target_genes is not None and gene in target_genes:
+        if not target_transcripts:
+            return True
+
+    # transcript-only match
+    if target_transcripts is not None and transcript in target_transcripts:
+        if not target_genes:
+            return True
+
+    return False
+
+
+def _parse_vcf_records(vcf_path, target_genes, target_transcripts, gene_transcript_pairs):
+    """Read VCF, parse records, filter, and return list of row dicts."""
+    records = []
+    sample_name = None
+    format_keys = None
+
+    with open(vcf_path) as fh:
+        for line in fh:
+            line = line.rstrip("\n")
+
+            # Skip meta lines
+            if line.startswith("##"):
+                continue
+
+            # Column header
+            if line.startswith("#CHROM"):
+                cols = line.lstrip("#").split("\t")
+                if len(cols) > 9:
+                    sample_name = cols[9]
+                continue
+
+            parts = line.split("\t")
+            if len(parts) < 8:
+                continue
+
+            chrom, pos, vid, ref, alt = parts[0], parts[1], parts[2], parts[3], parts[4]
+            info_str = parts[7]
+
+            info = _parse_info(info_str)
+            gene = info.get("Gene.refGeneWithVer", ".")
+            aachange_raw = info.get("AAChange.refGeneWithVer", "")
+            svtype = info.get("SVTYPE", ".")
+            svlen = info.get("SVLEN", ".")
+
+            # FORMAT and sample
+            if len(parts) > 8:
+                format_keys = parts[8].split(":")
+            sample_data = {}
+            if len(parts) > 9 and format_keys:
+                sample_vals = parts[9].split(":")
+                sample_data = dict(zip(format_keys, sample_vals))
+
+            gt = sample_data.get("GT", ".")
+            ad_raw = sample_data.get("AD", ".")
+
+            # Parse AD
+            if ad_raw != ".":
+                ad_parts = [int(x) for x in ad_raw.split(",")]
+                if len(ad_parts) >= 2:
+                    vd = ad_parts[1]
+                    dp = sum(ad_parts)
+                    af = round(vd / dp, 4) if dp > 0 else 0
+                    ad = ad_raw
+                else:
+                    vd = ad_parts[0] if ad_parts else "."
+                    dp = vd
+                    af = "."
+                    ad = ad_raw
+            else:
+                vd = dp = af = "."
+                ad = "."
+
+            # Parse AAChange
+            aachanges = _parse_aachange(aachange_raw) if aachange_raw else []
+
+            if not aachanges:
+                # No transcript info — still output if gene matches
+                if _matches_filter(gene, None, target_genes, target_transcripts, gene_transcript_pairs):
+                    insertion = len(alt) - len(ref) if svtype == "INS" else "."
+                    records.append({
+                        "CHROM": chrom, "POS": pos, "ID": vid or ".",
+                        "REF": ref, "ALT": alt, "Gene": gene,
+                        "Transcript": ".", "SVTYPE": svtype, "SVLEN": svlen,
+                        "Insertion": insertion, "CDS": ".", "AA": ".",
+                        "GT": gt, "AD": ad, "VD": vd, "DP": dp, "AF": af,
+                        "Sample": sample_name or ".",
+                    })
+                continue
+
+            for aa_entry in aachanges:
+                a_gene = aa_entry["gene"]
+                a_transcript = aa_entry["transcript"]
+                a_cds = aa_entry["cds"]
+                a_aa = aa_entry["aa"]
+
+                if not _matches_filter(a_gene, a_transcript, target_genes, target_transcripts, gene_transcript_pairs):
+                    continue
+
+                insertion = len(alt) - len(ref) if svtype == "INS" else "."
+
+                records.append({
+                    "CHROM": chrom, "POS": pos, "ID": vid or ".",
+                    "REF": ref, "ALT": alt, "Gene": a_gene,
+                    "Transcript": a_transcript, "SVTYPE": svtype,
+                    "SVLEN": svlen, "Insertion": insertion,
+                    "CDS": a_cds, "AA": a_aa,
+                    "GT": gt, "AD": ad, "VD": vd, "DP": dp, "AF": af,
+                    "Sample": sample_name or ".",
+                })
+
+    return records
 
 
 # ---------------------------------------------------------------------------
@@ -197,4 +404,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BrokenPipeError:
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+        sys.exit(0)
