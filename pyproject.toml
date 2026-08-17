@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pindel-tool"
+version = "0.1.0"
+description = "CLI wrapper for Pindel structural variant detection pipeline"
+readme = "README.md"
+license = {text = "GPL-2.0"}
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+
+[project.scripts]
+pindel-tool = "pindel_tool.cli:main"
+
+[tool.setuptools.package-data]
+pindel_tool = [
+    "pindel",
+    "pindel2vcf",
+    "annovar_scripts/*.pl",
+]
