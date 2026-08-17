@@ -9,6 +9,26 @@ Pindel 是一款基于 split-read（分裂读）算法的结构变异（Structur
 - **串联重复 (Tandem Duplications, TD)**
 - **移动元件插入 (Mobile Element Insertions, MEI)**
 
+## 安装
+
+### pip 安装（推荐）
+
+```bash
+pip install pindel-tool
+```
+
+安装后可直接使用 `pindel-tool` 命令：
+
+```bash
+pindel-tool --help
+pindel-tool pindel --help
+pindel-tool filter --help
+```
+
+### 源码编译
+
+如需从源码编译，参考下文"编译安装"部分。
+
 ## 目录结构
 
 ```
@@ -17,6 +37,15 @@ pindel/
 ├── pindel2vcf          # VCF 转换工具
 ├── sam2pindel          # SAM 转换工具
 ├── pindel2vcf4tcga     # TCGA 格式转换工具
+├── pindel_tool.py      # Python CLI 入口（已打包到 pip）
+├── pyproject.toml      # Python 包配置
+├── annovar_scripts/    # ANNOVAR 注释脚本
+│   └── table_annovar.pl
+├── src/pindel_tool/    # Python 包源码
+│   ├── cli.py
+│   ├── pindel          # 打包的二进制文件
+│   ├── pindel2vcf      # 打包的二进制文件
+│   └── annovar_scripts/
 └── htslib/             # 本地 htslib 库
     ├── libhts.so.3
     └── htslib/         # 头文件
@@ -208,6 +237,108 @@ echo "/data/normal.bam   400    NORMAL" >> config.txt
 ./pindel2vcf -r /data/reference.fa -R GRCh38 -d 20200101 -p pindel_result_INV -e 5 -v inversions.vcf
 ```
 
+## Python CLI 工具
+
+安装后可通过 `pindel-tool` 命令运行完整分析流程：
+
+```bash
+pip install pindel-tool
+```
+
+### 四个子命令
+
+| 子命令 | 功能 |
+|--------|------|
+| `pindel` | 调用 pindel 检测结构变异 |
+| `pindel2vcf` | 将 pindel 输出转为 VCF |
+| `anno` | ANNOVAR 基因注释 |
+| `filter` | 按基因/转录本过滤 VCF，输出表格 |
+
+### 完整流程示例
+
+```bash
+# 1. 检测结构变异
+pindel-tool pindel -f reference.fa -i config.txt -o output -c ALL -T 4
+
+# 2. 转换为 VCF
+pindel-tool pindel2vcf -P output -r reference.fa -R hg38 -d 20230801 -v result.vcf
+
+# 3. ANNOVAR 注释
+pindel-tool anno result.vcf /path/to/humandb/ --buildver hg38
+
+# 4. 按基因过滤输出
+pindel-tool filter result.hg38_multianno.vcf --gene FLT3,KMT2A -o filtered.tsv
+```
+
+### 子命令参数
+
+#### pindel
+
+```bash
+pindel-tool pindel -f <reference.fa> -i <config.txt> -o <prefix> [options]
+```
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `-f` | 参考基因组 FASTA | 必需 |
+| `-i` | BAM 配置文件 | 必需 |
+| `-o` | 输出文件前缀 | 必需 |
+| `-c` | 染色体（或 ALL） | ALL |
+| `-T` | 线程数 | 1 |
+| `-a` | 错配阈值 | 1 |
+| `-M` | 最小支持读数 | 1 |
+
+#### pindel2vcf
+
+```bash
+pindel-tool pindel2vcf -P <prefix> -r <ref.fa> -R <name> -d <date> [options]
+```
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `-P` | pindel 输出文件前缀 | 必需 |
+| `-r` | 参考基因组 FASTA | 必需 |
+| `-R` | 参考基因组名称（如 hg38） | 必需 |
+| `-d` | 参考基因组版本日期 | 必需 |
+| `-v` | 输出 VCF 文件名 | 自动生成 |
+| `-e` | 最小支持读数 | 1 |
+| `-he` | 杂合阈值 | 0.2 |
+| `-ho` | 纯合阈值 | 0.8 |
+
+#### anno
+
+```bash
+pindel-tool anno <input.vcf> [db_path] [options]
+```
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `input_vcf` | 输入 VCF 文件 | 必需 |
+| `db_path` | ANNOVAR 数据库路径 | `/mnt/nas/zhangrs/3.database/hg38/humandb/` |
+| `--buildver` | 基因组版本 | hg38 |
+| `--protocol` | 注释协议 | refGeneWithVer |
+| `--operation` | 操作类型 | g |
+| `--nastring` | 空值标记 | . |
+| `--out` | 输出文件前缀 | 基于输入文件名 |
+
+#### filter
+
+```bash
+pindel-tool filter <annotated.vcf> [options]
+```
+
+| 参数 | 说明 |
+|------|------|
+| `input_vcf` | 注释后的 VCF（`*_multianno.vcf`） |
+| `--gene` | 基因名，逗号分隔（如 `FLT3,KMT2A`） |
+| `--transcript` | 转录本 ID，逗号分隔 |
+| `--gene-transcript-pair` | 基因:转录本配对（如 `FLT3:NM_004119.3`），可重复指定 |
+| `-o` | 输出文件路径（默认 stdout） |
+
+**筛选逻辑**：多种筛选条件之间为 OR 关系。
+
+**输出字段**：CHROM, POS, ID, REF, ALT, Gene, Transcript, SVTYPE, SVLEN, Insertion, CDS, AA, GT, AD, VD, DP, AF, Sample
+
 ## 肿瘤-正常配对分析
 
 对于肿瘤样本的体细胞突变检测：
@@ -316,6 +447,7 @@ perl table_annovar.pl input.vcf /path/to/humandb/ \
 - Pindel version: 0.2.5b9
 - 发布日期: 20160729
 - 作者: Kai Ye (kaiye@xjtu.edu.cn)
+- Python CLI tool: pindel-tool 0.1.0（`pip install pindel-tool`）
 
 ## 参考文献
 
