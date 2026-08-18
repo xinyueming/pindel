@@ -1,0 +1,32 @@
+# Git
+.git
+.gitignore
+
+# Python
+.venv
+__pycache__
+*.egg-info
+dist
+build
+*.whl
+*.tar.gz
+*.pyc
+
+# IDE
+.vscode
+.idea
+
+# Build scripts
+build.sh
+
+# Documentation
+*.md
+!README.md
+
+# Test files
+test/
+demo/
+
+# OS files
+.DS_Store
+*~

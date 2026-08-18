@@ -26,8 +26,8 @@ Homepage = "https://github.com/xinyueming/pindel"
 [project.scripts]
 pindel-tool = "pindel_tool.cli:main"
 
-[tool.setuptools]
-packages = ["pindel_tool"]
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.setuptools.package-data]
 pindel_tool = [
