@@ -51,6 +51,15 @@ def _check_file(path, label="file"):
     return 0
 
 
+def _check_command(cmd):
+    """Check if a command is available."""
+    try:
+        subprocess.run([cmd, "--version"], capture_output=True)
+        return True
+    except FileNotFoundError:
+        return False
+
+
 def _get_read_length(bam_path):
     """Get read length from samtools stats."""
     result = subprocess.run(
@@ -67,37 +76,60 @@ def _get_read_length(bam_path):
 
 def _get_insert_size(bam_path):
     """Get median and mean insert size from Picard CollectInsertSizeMetrics."""
-    result = subprocess.run(
-        [
-            "java", "-jar",
-            _tool_path("picard.jar") if os.path.exists(_tool_path("picard.jar")) else "picard.jar",
-            "CollectInsertSizeMetrics",
-            f"I={bam_path}",
-            "O=/dev/null",
-            "H=/dev/null",
-            "M=0.5",
-        ],
-        capture_output=True, text=True,
-    )
-    for line in result.stderr.splitlines():
-        if line.startswith("MEDIAN_INSERT_SIZE"):
-            continue
-        parts = line.split()
-        if len(parts) >= 2:
+    import tempfile
+
+    picard_cmds = [
+        ["picard", "CollectInsertSizeMetrics"],
+        ["java", "-jar", _tool_path("picard.jar"), "CollectInsertSizeMetrics"],
+    ]
+
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
+        metrics_file = f.name
+
+    try:
+        for cmd in picard_cmds:
             try:
-                median = int(float(parts[0]))
-                mean = int(float(parts[1]))
-                return median, mean
-            except ValueError:
+                full_cmd = cmd + [
+                    f"I={bam_path}",
+                    f"O={metrics_file}",
+                    f"H={metrics_file}.hist",
+                ]
+                result = subprocess.run(full_cmd, capture_output=True, text=True)
+                if result.returncode == 0:
+                    break
+            except FileNotFoundError:
                 continue
-    raise RuntimeError("Could not determine insert size from BAM")
+        else:
+            raise RuntimeError(
+                "Picard not found. Install with: conda install -c bioconda picard"
+            )
+
+        with open(metrics_file) as f:
+            for line in f:
+                if line.startswith("MEDIAN_INSERT_SIZE"):
+                    continue
+                parts = line.strip().split("\t")
+                if len(parts) >= 2:
+                    try:
+                        median = int(float(parts[0]))
+                        mean = int(float(parts[1]))
+                        return median, mean
+                    except ValueError:
+                        continue
+        raise RuntimeError("Could not determine insert size from BAM")
+    finally:
+        import os
+
+        for f in [metrics_file, metrics_file + ".hist"]:
+            if os.path.exists(f):
+                os.unlink(f)
 
 
 def _generate_config(bam_path, sample_name, output_path):
     """Generate pindel config file from BAM."""
     rl = _get_read_length(bam_path)
     median, mean = _get_insert_size(bam_path)
-    insert_size = max(median, mean, rl)
+    insert_size = max(median, rl)
     with open(output_path, "w") as f:
         f.write(f"{bam_path}\t{insert_size}\t{sample_name}\n")
     return output_path
@@ -105,6 +137,9 @@ def _generate_config(bam_path, sample_name, output_path):
 
 def cmd_config(args):
     """Generate pindel config file from BAM."""
+    if not _check_command("samtools"):
+        print("Error: samtools not found. Install with: conda install -c bioconda samtools", file=sys.stderr)
+        return 1
     rc = _check_file(args.bam, "BAM file")
     if rc:
         return rc
@@ -131,6 +166,9 @@ def cmd_pindel(args):
     if args.bam:
         if not args.sample:
             print("Error: --sample required with --bam", file=sys.stderr)
+            return 1
+        if not _check_command("samtools"):
+            print("Error: samtools not found. Install with: conda install -c bioconda samtools", file=sys.stderr)
             return 1
         rc = _check_file(args.bam, "BAM file")
         if rc:
@@ -433,7 +471,7 @@ def build_parser():
     p_pindel.add_argument("-f", "--fasta", required=True, help="Reference genome FASTA file")
     p_pindel.add_argument("-i", "--config-file", default=None, help="BAM config file (optional if --bam provided)")
     p_pindel.add_argument("-b", "--bam", default=None, help="BAM file path (auto-generates config)")
-    p_pindel.add_argument("-n", "--sample", default=None, help="Sample name (required with --bam)")
+    p_pindel.add_argument("-s", "--sample", default=None, help="Sample name (required with --bam)")
     p_pindel.add_argument("-o", "--output-prefix", required=True, help="Output file prefix")
     p_pindel.add_argument("-c", "--chromosome", default="ALL", help="Chromosome region (default: ALL)")
     p_pindel.add_argument("-T", "--number-of-threads", type=int, default=1, help="Number of threads (default: 1)")
@@ -447,7 +485,7 @@ def build_parser():
         help="Generate pindel config file from BAM",
     )
     p_config.add_argument("-b", "--bam", required=True, help="BAM file path")
-    p_config.add_argument("-n", "--sample", required=True, help="Sample name")
+    p_config.add_argument("-s", "--sample", required=True, help="Sample name")
     p_config.add_argument("-o", "--output", default="pindel.config", help="Output config file (default: pindel.config)")
     p_config.set_defaults(func=cmd_config)
 
