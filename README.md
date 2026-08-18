@@ -220,11 +220,12 @@ pindel-tool pindel2vcf -r /data/reference.fa -R GRCh38 -d 20200101 -P pindel_res
 pip install pindel-tool
 ```
 
-### 四个子命令
+### 五个子命令
 
 | 子命令 | 功能 |
 |--------|------|
 | `pindel` | 调用 pindel 检测结构变异 |
+| `config` | 从 BAM 文件自动生成 pindel config |
 | `pindel2vcf` | 将 pindel 输出转为 VCF |
 | `anno` | ANNOVAR 基因注释 |
 | `filter` | 按基因/转录本过滤 VCF，输出表格 |
@@ -256,12 +257,32 @@ pindel-tool pindel -f <reference.fa> -i <config.txt> -o <prefix> [options]
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
 | `-f` | 参考基因组 FASTA | 必需 |
-| `-i` | BAM 配置文件 | 必需 |
+| `-i` | BAM 配置文件 | 必需（使用 `--bam` 时可省略） |
+| `-b` | BAM 文件路径（自动生成 config） | 可选 |
+| `-s` | 样本名（与 `--bam` 配合使用） | 可选 |
 | `-o` | 输出文件前缀 | 必需 |
 | `-c` | 染色体（或 ALL） | ALL |
 | `-T` | 线程数 | 1 |
 | `-a` | 错配阈值 | 1 |
 | `-M` | 最小支持读数 | 1 |
+
+**自动生成 config**:
+
+使用 `--bam` 参数时，工具会自动分析 BAM 文件并生成 config：
+
+```bash
+pindel-tool pindel -f ref.fa --bam sample.bam --sample TUMOR -o output -c ALL
+```
+
+> **依赖**: `--bam` 和 `config` 子命令需要以下外部工具：
+>
+> - **samtools**（获取 read length）
+> - **Picard**（获取 insert size metrics）
+>
+> 安装:
+> ```bash
+> conda install -c bioconda samtools picard
+> ```
 
 #### pindel2vcf
 
@@ -295,6 +316,18 @@ pindel-tool anno <input.vcf> [db_path] [options]
 | `--operation` | 操作类型 | g |
 | `--nastring` | 空值标记 | . |
 | `--out` | 输出文件前缀 | 基于输入文件名 |
+
+#### config
+
+```bash
+pindel-tool config --bam <sample.bam> --sample <name> -o <config.txt>
+```
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `-b` | BAM 文件路径 | 必需 |
+| `-s` | 样本名 | 必需 |
+| `-o` | 输出 config 文件 | pindel.config |
 
 #### filter
 

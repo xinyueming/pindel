@@ -51,6 +51,107 @@ def _check_file(path, label="file"):
     return 0
 
 
+def _check_command(cmd):
+    """Check if a command is available."""
+    try:
+        subprocess.run([cmd, "--version"], capture_output=True)
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def _get_read_length(bam_path):
+    """Get read length from samtools stats."""
+    result = subprocess.run(
+        ["samtools", "stats", bam_path],
+        capture_output=True, text=True,
+    )
+    for line in result.stdout.splitlines():
+        if line.startswith("RL"):
+            parts = line.split()
+            if len(parts) >= 2:
+                return int(parts[1])
+    raise RuntimeError("Could not determine read length from BAM")
+
+
+def _get_insert_size(bam_path):
+    """Get median and mean insert size from Picard CollectInsertSizeMetrics."""
+    import tempfile
+
+    picard_cmds = [
+        ["picard", "CollectInsertSizeMetrics"],
+        ["java", "-jar", _tool_path("picard.jar"), "CollectInsertSizeMetrics"],
+    ]
+
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
+        metrics_file = f.name
+
+    try:
+        for cmd in picard_cmds:
+            try:
+                full_cmd = cmd + [
+                    f"I={bam_path}",
+                    f"O={metrics_file}",
+                    f"H={metrics_file}.hist",
+                ]
+                result = subprocess.run(full_cmd, capture_output=True, text=True)
+                if result.returncode == 0:
+                    break
+            except FileNotFoundError:
+                continue
+        else:
+            raise RuntimeError(
+                "Picard not found. Install with: conda install -c bioconda picard"
+            )
+
+        with open(metrics_file) as f:
+            for line in f:
+                if line.startswith("MEDIAN_INSERT_SIZE"):
+                    continue
+                parts = line.strip().split("\t")
+                if len(parts) >= 2:
+                    try:
+                        median = int(float(parts[0]))
+                        mean = int(float(parts[1]))
+                        return median, mean
+                    except ValueError:
+                        continue
+        raise RuntimeError("Could not determine insert size from BAM")
+    finally:
+        import os
+
+        for f in [metrics_file, metrics_file + ".hist"]:
+            if os.path.exists(f):
+                os.unlink(f)
+
+
+def _generate_config(bam_path, sample_name, output_path):
+    """Generate pindel config file from BAM."""
+    rl = _get_read_length(bam_path)
+    median, mean = _get_insert_size(bam_path)
+    insert_size = max(median, rl)
+    with open(output_path, "w") as f:
+        f.write(f"{bam_path}\t{insert_size}\t{sample_name}\n")
+    return output_path
+
+
+def cmd_config(args):
+    """Generate pindel config file from BAM."""
+    if not _check_command("samtools"):
+        print("Error: samtools not found. Install with: conda install -c bioconda samtools", file=sys.stderr)
+        return 1
+    rc = _check_file(args.bam, "BAM file")
+    if rc:
+        return rc
+    try:
+        config_path = _generate_config(args.bam, args.sample, args.output)
+        print(f"[config] Wrote config to {config_path}")
+    except (RuntimeError, FileNotFoundError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Subcommand implementations
 # ---------------------------------------------------------------------------
@@ -60,6 +161,23 @@ def cmd_pindel(args):
     rc = _check_file(args.fasta, "Reference FASTA")
     if rc:
         return rc
+
+    # Auto-generate config from BAM if --bam provided
+    if args.bam:
+        if not args.sample:
+            print("Error: --sample required with --bam", file=sys.stderr)
+            return 1
+        if not _check_command("samtools"):
+            print("Error: samtools not found. Install with: conda install -c bioconda samtools", file=sys.stderr)
+            return 1
+        rc = _check_file(args.bam, "BAM file")
+        if rc:
+            return rc
+        args.config_file = _generate_config(args.bam, args.sample, args.output_prefix + ".config")
+    elif not args.config_file:
+        print("Error: --config-file or --bam required", file=sys.stderr)
+        return 1
+
     rc = _check_file(args.config_file, "Config file")
     if rc:
         return rc
@@ -351,13 +469,25 @@ def build_parser():
         help="Run Pindel to detect structural variants from BAM files",
     )
     p_pindel.add_argument("-f", "--fasta", required=True, help="Reference genome FASTA file")
-    p_pindel.add_argument("-i", "--config-file", required=True, help="BAM config file (bam_path insert_size sample_tag)")
+    p_pindel.add_argument("-i", "--config-file", default=None, help="BAM config file (optional if --bam provided)")
+    p_pindel.add_argument("-b", "--bam", default=None, help="BAM file path (auto-generates config)")
+    p_pindel.add_argument("-s", "--sample", default=None, help="Sample name (required with --bam)")
     p_pindel.add_argument("-o", "--output-prefix", required=True, help="Output file prefix")
     p_pindel.add_argument("-c", "--chromosome", default="ALL", help="Chromosome region (default: ALL)")
     p_pindel.add_argument("-T", "--number-of-threads", type=int, default=1, help="Number of threads (default: 1)")
     p_pindel.add_argument("-a", "--additional-mismatch", type=int, default=1, help="Additional mismatch tolerance (default: 1)")
     p_pindel.add_argument("-M", "--minimum-support-for-event", type=int, default=1, help="Minimum supporting reads for an event (default: 1)")
     p_pindel.set_defaults(func=cmd_pindel)
+
+    # -- config -----------------------------------------------------------
+    p_config = subparsers.add_parser(
+        "config",
+        help="Generate pindel config file from BAM",
+    )
+    p_config.add_argument("-b", "--bam", required=True, help="BAM file path")
+    p_config.add_argument("-s", "--sample", required=True, help="Sample name")
+    p_config.add_argument("-o", "--output", default="pindel.config", help="Output config file (default: pindel.config)")
+    p_config.set_defaults(func=cmd_config)
 
     # -- pindel2vcf -------------------------------------------------------
     p_pindel2vcf = subparsers.add_parser(
