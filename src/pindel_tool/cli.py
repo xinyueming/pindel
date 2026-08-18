@@ -128,7 +128,7 @@ def cmd_filter(args):
     header_fields = [
         "CHROM", "POS", "ID", "REF", "ALT", "Gene", "Transcript",
         "SVTYPE", "SVLEN", "Insertion", "CDS", "AA",
-        "GT", "AD", "VD", "DP", "AF", "Sample",
+        "GT", "AD", "VD", "DP", "AF", "AR", "Sample",
     ]
 
     # Parse filter targets
@@ -276,14 +276,16 @@ def _parse_vcf_records(vcf_path, target_genes, target_transcripts, gene_transcri
                     vd = ad_parts[1]
                     dp = sum(ad_parts)
                     af = round(vd / dp, 4) if dp > 0 else 0
+                    ar = round(vd / ad_parts[0], 4) if ad_parts[0] > 0 else "."
                     ad = ad_raw
                 else:
                     vd = "."
                     dp = "."
                     af = "."
+                    ar = "."
                     ad = ad_raw
             else:
-                vd = dp = af = "."
+                vd = dp = af = ar = "."
                 ad = "."
 
             aachanges = _parse_aachange(aachange_raw) if aachange_raw else []
@@ -296,7 +298,7 @@ def _parse_vcf_records(vcf_path, target_genes, target_transcripts, gene_transcri
                         "REF": ref, "ALT": alt, "Gene": gene,
                         "Transcript": ".", "SVTYPE": svtype, "SVLEN": svlen,
                         "Insertion": insertion, "CDS": ".", "AA": ".",
-                        "GT": gt, "AD": ad, "VD": vd, "DP": dp, "AF": af,
+                        "GT": gt, "AD": ad, "VD": vd, "DP": dp, "AF": af, "AR": ar,
                         "Sample": sample_name or ".",
                     })
                 continue
@@ -318,7 +320,7 @@ def _parse_vcf_records(vcf_path, target_genes, target_transcripts, gene_transcri
                     "Transcript": a_transcript, "SVTYPE": svtype,
                     "SVLEN": svlen, "Insertion": insertion,
                     "CDS": a_cds, "AA": a_aa,
-                    "GT": gt, "AD": ad, "VD": vd, "DP": dp, "AF": af,
+                    "GT": gt, "AD": ad, "VD": vd, "DP": dp, "AF": af, "AR": ar,
                     "Sample": sample_name or ".",
                 })
 
