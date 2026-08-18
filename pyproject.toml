@@ -9,14 +9,25 @@ description = "CLI wrapper for Pindel structural variant detection pipeline"
 readme = "README.md"
 license = {text = "GPL-2.0"}
 requires-python = ">=3.8"
+authors = [
+    {name = "xinyueming"}
+]
+keywords = ["bioinformatics", "structural-variants", "pindel", "ngs", "sv-calling"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: POSIX :: Linux",
+    "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
 
+[project.urls]
+Homepage = "https://github.com/xinyueming/pindel"
+
 [project.scripts]
 pindel-tool = "pindel_tool.cli:main"
+
+[tool.setuptools]
+packages = ["pindel_tool"]
 
 [tool.setuptools.package-data]
 pindel_tool = [

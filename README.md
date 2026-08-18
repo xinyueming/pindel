@@ -25,56 +25,31 @@ pindel-tool pindel --help
 pindel-tool filter --help
 ```
 
-### 源码编译
+### 源码构建（开发者）
 
-如需从源码编译，参考下文"编译安装"部分。
+```bash
+pip install build
+python -m build
+pip install dist/pindel_tool-*.whl
+```
 
 ## 目录结构
 
 ```
 pindel/
-├── pindel              # 主程序
-├── pindel2vcf          # VCF 转换工具
-├── sam2pindel          # SAM 转换工具
-├── pindel2vcf4tcga     # TCGA 格式转换工具
-├── pindel_tool.py      # Python CLI 入口（已打包到 pip）
-├── pyproject.toml      # Python 包配置
-├── annovar_scripts/    # ANNOVAR 注释脚本
-│   └── table_annovar.pl
-├── src/pindel_tool/    # Python 包源码
-│   ├── cli.py
-│   ├── pindel          # 打包的二进制文件
-│   ├── pindel2vcf      # 打包的二进制文件
-│   └── annovar_scripts/
-└── htslib/             # 本地 htslib 库
-    ├── libhts.so.3
-    └── htslib/         # 头文件
+├── pyproject.toml          # Python 包配置
+├── README.md               # 本文档
+├── COPYING.txt             # 许可证
+├── .gitignore
+└── src/
+    └── pindel_tool/        # Python 包
+        ├── __init__.py
+        ├── cli.py          # CLI 入口
+        ├── pindel          # Pindel 二进制
+        ├── pindel2vcf      # VCF 转换二进制
+        └── annovar_scripts/
+            └── table_annovar.pl
 ```
-
-## 编译安装
-
-### 前置要求
-
-- GNU Make 和 GCC
-- htslib（已包含在本目录的 `htslib/` 子目录中）
-
-### 编译步骤
-
-```bash
-# 直接编译（使用本地 htslib）
-make clean
-make
-
-# 编译产物
-# - pindel: 主程序
-# - pindel2vcf: VCF 转换工具
-# - sam2pindel: SAM 转换工具
-# - pindel2vcf4tcga: TCGA 格式转换工具
-```
-
-### GCC 13+ 兼容性
-
-如果使用 GCC 13 或更高版本编译，源码已修复 `abs(unsigned int)` 类型歧义问题。
 
 ## 使用方法
 
@@ -100,7 +75,7 @@ make
 
 ```bash
 # 基础命令
-./pindel -f reference.fa -i config.txt -o output_prefix -c ALL
+pindel-tool pindel -f reference.fa -i config.txt -o output_prefix -c ALL
 
 # 参数说明：
 # -f/--fasta      参考基因组 FASTA 文件
@@ -140,13 +115,13 @@ make
 
 ```bash
 # 分析单个染色体
-./pindel -f ref.fa -i config.txt -o output -c 20
+pindel-tool pindel -f ref.fa -i config.txt -o output -c 20
 
 # 分析染色体特定区域
-./pindel -f ref.fa -i config.txt -o output -c 20:1000000-2000000
+pindel-tool pindel -f ref.fa -i config.txt -o output -c 20:1000000-2000000
 
 # 排除着丝粒/端粒区域（减少假阳性）
-./pindel -f ref.fa -i config.txt -o output -c ALL -J centromere.bed
+pindel-tool pindel -f ref.fa -i config.txt -o output -c ALL -J centromere.bed
 ```
 
 ### 4. 性能优化
@@ -155,7 +130,7 @@ make
 
 ```bash
 # 使用 4 线程
-./pindel -f ref.fa -i config.txt -o output -c ALL -T 4
+pindel-tool pindel -f ref.fa -i config.txt -o output -c ALL -T 4
 ```
 
 #### 并行处理（集群环境）
@@ -163,7 +138,7 @@ make
 ```bash
 # 按染色体并行提交任务
 for chr in {1..22} X Y; do
-    ./pindel -f ref.fa -i config.txt -o chr${chr} -c ${chr} &
+    pindel-tool pindel -f ref.fa -i config.txt -o chr${chr} -c ${chr} &
 done
 wait
 ```
@@ -172,10 +147,10 @@ wait
 
 ```bash
 # 减小窗口大小
-./pindel -f ref.fa -i config.txt -o output -c ALL -W 1
+pindel-tool pindel -f ref.fa -i config.txt -o output -c ALL -W 1
 
 # 排除高重复区域
-./pindel -f ref.fa -i config.txt -o output -c ALL -J exclude.bed
+pindel-tool pindel -f ref.fa -i config.txt -o output -c ALL -J exclude.bed
 ```
 
 ## 输出文件
@@ -207,16 +182,16 @@ Pindel 输出多个文本文件，每种 SV 类型一个：
 
 ## 转换为 VCF 格式
 
-使用 `pindel2vcf` 将 Pindel 输出转换为 VCF：
+使用 `pindel-tool pindel2vcf` 将 Pindel 输出转换为 VCF：
 
 ```bash
-./pindel2vcf -r reference.fa -R GRCh38 -d 20200101 -p output_D -e 5
+pindel-tool pindel2vcf -r reference.fa -R GRCh38 -d 20200101 -P output_D -e 5
 
 # 参数说明：
 # -r  参考基因组 FASTA 文件
 # -R  参考基因组名称
 # -d  参考基因组版本日期
-# -p  Pindel 输出文件（如 output_D）
+# -P  Pindel 输出文件前缀（如 output 对应 output_D, output_SI 等）
 # -e  最小支持读数阈值（过滤低质量结果）
 # -v  输出 VCF 文件名（可选，默认使用输入文件名）
 # -G  输出 GATK 兼容格式
@@ -230,11 +205,11 @@ echo "/data/tumor.bam    400    TUMOR" > config.txt
 echo "/data/normal.bam   400    NORMAL" >> config.txt
 
 # 2. 运行 Pindel（排除着丝粒区域）
-./pindel -f /data/reference.fa -i config.txt -o pindel_result -c ALL -T 4 -J centromere.bed
+pindel-tool pindel -f /data/reference.fa -i config.txt -o pindel_result -c ALL -T 4 -J centromere.bed
 
 # 3. 转换为 VCF（过滤支持读数 <5 的结果）
-./pindel2vcf -r /data/reference.fa -R GRCh38 -d 20200101 -p pindel_result_D -e 5 -v deletions.vcf
-./pindel2vcf -r /data/reference.fa -R GRCh38 -d 20200101 -p pindel_result_INV -e 5 -v inversions.vcf
+pindel-tool pindel2vcf -r /data/reference.fa -R GRCh38 -d 20200101 -P pindel_result -e 5 -v deletions.vcf
+pindel-tool pindel2vcf -r /data/reference.fa -R GRCh38 -d 20200101 -P pindel_result -e 5 -v inversions.vcf
 ```
 
 ## Python CLI 工具
@@ -349,7 +324,7 @@ echo "/data/tumor.bam    350    TUMOR" > tn_config.txt
 echo "/data/normal.bam   350    NORMAL" >> tn_config.txt
 
 # 运行 Pindel
-./pindel -f hg38.fa -i tn_config.txt -o somatic_sv -c ALL -T 4 -g
+pindel-tool pindel -f hg38.fa -i tn_config.txt -o somatic_sv -c ALL -T 4 -g
 
 # 后续需要比较肿瘤和正常样本的结果，筛选肿瘤特异性的 SV
 ```
@@ -358,10 +333,10 @@ echo "/data/normal.bam   350    NORMAL" >> tn_config.txt
 
 ```bash
 # 使用 -q 参数检测 MEI
-./pindel -f reference.fa -i config.txt -o mei_output -c ALL -q
+pindel-tool pindel -f reference.fa -i config.txt -o mei_output -c ALL -q
 
 # 可选：使用 BreakDancer 结果辅助
-./pindel -f reference.fa -i config.txt -o mei_output -c ALL -q -b breakdancer_output.txt
+pindel-tool pindel -f reference.fa -i config.txt -o mei_output -c ALL -q -b breakdancer_output.txt
 ```
 
 ## 常见问题
@@ -373,7 +348,7 @@ echo "/data/normal.bam   350    NORMAL" >> tn_config.txt
 **解决方案**：
 ```bash
 # 排除问题区域
-./pindel -f ref.fa -i config.txt -o output -c ALL -J centromere.bed
+pindel-tool pindel -f ref.fa -i config.txt -o output -c ALL -J centromere.bed
 ```
 
 ### 2. 运行速度慢
@@ -403,13 +378,11 @@ Pindel 检测的结构变异可能位于内含子区域。本仓库修改了 ANN
 
 ```bash
 # 运行 ANNOVAR 注释（自动启用内含子 cDNA 坐标计算）
-perl table_annovar.pl input.vcf /path/to/humandb/ \
-    -buildver hg38 \
-    -protocol refGeneWithVer \
-    -operation g \
-    -nastring . \
-    -vcfinput \
-    -out output
+pindel-tool anno input.vcf /path/to/humandb/ \
+    --buildver hg38 \
+    --protocol refGeneWithVer \
+    --nastring . \
+    --out output
 ```
 
 ### 输出格式
