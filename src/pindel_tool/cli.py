@@ -51,6 +51,72 @@ def _check_file(path, label="file"):
     return 0
 
 
+def _get_read_length(bam_path):
+    """Get read length from samtools stats."""
+    result = subprocess.run(
+        ["samtools", "stats", bam_path],
+        capture_output=True, text=True,
+    )
+    for line in result.stdout.splitlines():
+        if line.startswith("RL"):
+            parts = line.split()
+            if len(parts) >= 2:
+                return int(parts[1])
+    raise RuntimeError("Could not determine read length from BAM")
+
+
+def _get_insert_size(bam_path):
+    """Get median and mean insert size from Picard CollectInsertSizeMetrics."""
+    result = subprocess.run(
+        [
+            "java", "-jar",
+            _tool_path("picard.jar") if os.path.exists(_tool_path("picard.jar")) else "picard.jar",
+            "CollectInsertSizeMetrics",
+            f"I={bam_path}",
+            "O=/dev/null",
+            "H=/dev/null",
+            "M=0.5",
+        ],
+        capture_output=True, text=True,
+    )
+    for line in result.stderr.splitlines():
+        if line.startswith("MEDIAN_INSERT_SIZE"):
+            continue
+        parts = line.split()
+        if len(parts) >= 2:
+            try:
+                median = int(float(parts[0]))
+                mean = int(float(parts[1]))
+                return median, mean
+            except ValueError:
+                continue
+    raise RuntimeError("Could not determine insert size from BAM")
+
+
+def _generate_config(bam_path, sample_name, output_path):
+    """Generate pindel config file from BAM."""
+    rl = _get_read_length(bam_path)
+    median, mean = _get_insert_size(bam_path)
+    insert_size = max(median, mean, rl)
+    with open(output_path, "w") as f:
+        f.write(f"{bam_path}\t{insert_size}\t{sample_name}\n")
+    return output_path
+
+
+def cmd_config(args):
+    """Generate pindel config file from BAM."""
+    rc = _check_file(args.bam, "BAM file")
+    if rc:
+        return rc
+    try:
+        config_path = _generate_config(args.bam, args.sample, args.output)
+        print(f"[config] Wrote config to {config_path}")
+    except (RuntimeError, FileNotFoundError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Subcommand implementations
 # ---------------------------------------------------------------------------
@@ -60,6 +126,20 @@ def cmd_pindel(args):
     rc = _check_file(args.fasta, "Reference FASTA")
     if rc:
         return rc
+
+    # Auto-generate config from BAM if --bam provided
+    if args.bam:
+        if not args.sample:
+            print("Error: --sample required with --bam", file=sys.stderr)
+            return 1
+        rc = _check_file(args.bam, "BAM file")
+        if rc:
+            return rc
+        args.config_file = _generate_config(args.bam, args.sample, args.output_prefix + ".config")
+    elif not args.config_file:
+        print("Error: --config-file or --bam required", file=sys.stderr)
+        return 1
+
     rc = _check_file(args.config_file, "Config file")
     if rc:
         return rc
@@ -351,13 +431,25 @@ def build_parser():
         help="Run Pindel to detect structural variants from BAM files",
     )
     p_pindel.add_argument("-f", "--fasta", required=True, help="Reference genome FASTA file")
-    p_pindel.add_argument("-i", "--config-file", required=True, help="BAM config file (bam_path insert_size sample_tag)")
+    p_pindel.add_argument("-i", "--config-file", default=None, help="BAM config file (optional if --bam provided)")
+    p_pindel.add_argument("-b", "--bam", default=None, help="BAM file path (auto-generates config)")
+    p_pindel.add_argument("-n", "--sample", default=None, help="Sample name (required with --bam)")
     p_pindel.add_argument("-o", "--output-prefix", required=True, help="Output file prefix")
     p_pindel.add_argument("-c", "--chromosome", default="ALL", help="Chromosome region (default: ALL)")
     p_pindel.add_argument("-T", "--number-of-threads", type=int, default=1, help="Number of threads (default: 1)")
     p_pindel.add_argument("-a", "--additional-mismatch", type=int, default=1, help="Additional mismatch tolerance (default: 1)")
     p_pindel.add_argument("-M", "--minimum-support-for-event", type=int, default=1, help="Minimum supporting reads for an event (default: 1)")
     p_pindel.set_defaults(func=cmd_pindel)
+
+    # -- config -----------------------------------------------------------
+    p_config = subparsers.add_parser(
+        "config",
+        help="Generate pindel config file from BAM",
+    )
+    p_config.add_argument("-b", "--bam", required=True, help="BAM file path")
+    p_config.add_argument("-n", "--sample", required=True, help="Sample name")
+    p_config.add_argument("-o", "--output", default="pindel.config", help="Output config file (default: pindel.config)")
+    p_config.set_defaults(func=cmd_config)
 
     # -- pindel2vcf -------------------------------------------------------
     p_pindel2vcf = subparsers.add_parser(
