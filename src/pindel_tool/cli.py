@@ -251,12 +251,12 @@ def cmd_filter(args):
 
     # Parse filter targets
     target_genes = set(args.gene.split(",")) if args.gene else None
-    target_transcripts = set(args.transcript.split(",")) if args.transcript else None
+    target_transcripts = set(_strip_version(t) for t in args.transcript.split(",")) if args.transcript else None
     gene_transcript_pairs = {}
     if args.gene_transcript_pair:
         for pair in args.gene_transcript_pair:
             g, t = pair.split(":", 1)
-            gene_transcript_pairs.setdefault(g, set()).add(t)
+            gene_transcript_pairs.setdefault(g, set()).add(_strip_version(t))
 
     # Parse VCF
     records = _parse_vcf_records(
@@ -326,20 +326,27 @@ def _parse_aachange(aachange_str):
     return entries
 
 
+def _strip_version(transcript):
+    """Remove version suffix from transcript ID (e.g. NM_004119.3 → NM_004119)."""
+    return transcript.split(".")[0] if "." in transcript else transcript
+
+
 def _matches_filter(gene, transcript, target_genes, target_transcripts, gene_transcript_pairs):
     """Check if a gene/transcript combo matches any of the filter criteria."""
     if target_genes is None and target_transcripts is None and not gene_transcript_pairs:
         return True
 
+    transcript_base = _strip_version(transcript)
+
     if gene_transcript_pairs:
-        if gene in gene_transcript_pairs and transcript in gene_transcript_pairs[gene]:
+        if gene in gene_transcript_pairs and transcript_base in gene_transcript_pairs[gene]:
             return True
 
     if target_genes is not None and gene in target_genes:
         if not target_transcripts:
             return True
 
-    if target_transcripts is not None and transcript in target_transcripts:
+    if target_transcripts is not None and transcript_base in target_transcripts:
         if not target_genes:
             return True
 
