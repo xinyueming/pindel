@@ -328,6 +328,8 @@ def _parse_aachange(aachange_str):
 
 def _strip_version(transcript):
     """Remove version suffix from transcript ID (e.g. NM_004119.3 → NM_004119)."""
+    if not transcript:
+        return transcript
     return transcript.split(".")[0] if "." in transcript else transcript
 
 
