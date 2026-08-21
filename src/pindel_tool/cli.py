@@ -270,6 +270,7 @@ def cmd_filter(args):
         target_transcripts,
         gene_transcript_pairs,
         target_svtypes,
+        args.min_af,
     )
 
     # Output
@@ -339,15 +340,18 @@ def _strip_version(transcript):
     return transcript.split(".")[0] if "." in transcript else transcript
 
 
-def _matches_filter(gene, transcript, target_genes, target_transcripts, gene_transcript_pairs, target_svtypes=None, svtype=None):
+def _matches_filter(gene, transcript, target_genes, target_transcripts, gene_transcript_pairs, target_svtypes=None, svtype=None, min_af=None, af=None):
     """Check if a gene/transcript combo matches any of the filter criteria."""
-    if target_genes is None and target_transcripts is None and not gene_transcript_pairs and not target_svtypes:
+    if target_genes is None and target_transcripts is None and not gene_transcript_pairs and not target_svtypes and min_af is None:
         return True
 
     if target_svtypes:
         svtype_upper = svtype.upper() if svtype else ""
         if not any(t in svtype_upper for t in target_svtypes):
             return False
+
+    if min_af is not None and af != "." and float(af) < min_af:
+        return False
 
     transcript_base = _strip_version(transcript)
 
@@ -366,7 +370,7 @@ def _matches_filter(gene, transcript, target_genes, target_transcripts, gene_tra
     return False
 
 
-def _parse_vcf_records(vcf_path, target_genes, target_transcripts, gene_transcript_pairs, target_svtypes=None):
+def _parse_vcf_records(vcf_path, target_genes, target_transcripts, gene_transcript_pairs, target_svtypes=None, min_af=None):
     """Read VCF, parse records, filter, and return list of row dicts."""
     records = []
     sample_name = None
@@ -429,7 +433,7 @@ def _parse_vcf_records(vcf_path, target_genes, target_transcripts, gene_transcri
             aachanges = _parse_aachange(aachange_raw) if aachange_raw else []
 
             if not aachanges:
-                if _matches_filter(gene, None, target_genes, target_transcripts, gene_transcript_pairs, target_svtypes, svtype):
+                if _matches_filter(gene, None, target_genes, target_transcripts, gene_transcript_pairs, target_svtypes, svtype, min_af, af):
                     insertion = len(alt) - len(ref) if svtype == "INS" else "."
                     records.append({
                         "CHROM": chrom, "POS": pos, "ID": vid or ".",
@@ -447,7 +451,7 @@ def _parse_vcf_records(vcf_path, target_genes, target_transcripts, gene_transcri
                 a_cds = aa_entry["cds"]
                 a_aa = aa_entry["aa"]
 
-                if not _matches_filter(a_gene, a_transcript, target_genes, target_transcripts, gene_transcript_pairs, target_svtypes, svtype):
+                if not _matches_filter(a_gene, a_transcript, target_genes, target_transcripts, gene_transcript_pairs, target_svtypes, svtype, min_af, af):
                     continue
 
                 insertion = len(alt) - len(ref) if svtype == "INS" else "."
@@ -554,6 +558,7 @@ def build_parser():
     p_filter.add_argument("--gene-transcript-pair", action="append", default=None, help="Gene:transcript pair (e.g. FLT3:NM_004119.3, repeatable). Multiple filter types use OR logic")
     p_filter.add_argument("-o", "--output", default=None, help="Output file path (default: stdout)")
     p_filter.add_argument("--svtype", default=None, help="SV type(s), comma-separated (e.g. DEL,INS,TANDEM)")
+    p_filter.add_argument("--min-af", type=float, default=None, help="Minimum allele frequency threshold (AF >= threshold kept)")
     p_filter.set_defaults(func=cmd_filter)
 
     return parser
