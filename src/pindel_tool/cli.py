@@ -254,9 +254,13 @@ def cmd_filter(args):
     target_transcripts = set(_strip_version(t) for t in args.transcript.split(",")) if args.transcript else None
     gene_transcript_pairs = {}
     if args.gene_transcript_pair:
-        for pair in args.gene_transcript_pair:
-            g, t = pair.split(":", 1)
-            gene_transcript_pairs.setdefault(g, set()).add(_strip_version(t))
+        for pair_str in args.gene_transcript_pair:
+            for pair in pair_str.split(","):
+                pair = pair.strip()
+                if not pair:
+                    continue
+                g, t = pair.split(":", 1)
+                gene_transcript_pairs.setdefault(g, set()).add(_strip_version(t))
 
     # Parse VCF
     records = _parse_vcf_records(
