@@ -313,6 +313,9 @@ def _parse_aachange(aachange_str):
     aachange_str = aachange_str.replace("\\x3b", ",")
     entries = []
     for entry in aachange_str.split(","):
+        entry = entry.strip()
+        if not entry or entry == ".":
+            continue
         parts = entry.split(":")
         if len(parts) >= 5:
             entries.append({
@@ -322,7 +325,17 @@ def _parse_aachange(aachange_str):
                 "cds": parts[3],
                 "aa": parts[4],
             })
-        elif len(parts) == 2:
+        elif len(parts) == 4:
+            # Intronic variant: GENE:TRANSCRIPT:exon:cDNA (no AA field)
+            if all(parts):
+                entries.append({
+                    "gene": parts[0],
+                    "transcript": parts[1],
+                    "exon": parts[2],
+                    "cds": parts[3],
+                    "aa": ".",
+                })
+        elif len(parts) > 1:
             entries.append({
                 "gene": parts[0],
                 "transcript": parts[1],
@@ -356,8 +369,9 @@ def _matches_filter(gene, transcript, target_genes, target_transcripts, gene_tra
     transcript_base = _strip_version(transcript)
 
     if gene_transcript_pairs:
-        if gene in gene_transcript_pairs and transcript_base in gene_transcript_pairs[gene]:
-            return True
+        if gene in gene_transcript_pairs:
+            if transcript_base is None or transcript_base in gene_transcript_pairs[gene]:
+                return True
 
     if target_genes is not None and gene in target_genes:
         if not target_transcripts:
@@ -430,7 +444,7 @@ def _parse_vcf_records(vcf_path, target_genes, target_transcripts, gene_transcri
                 vd = dp = af = ar = "."
                 ad = "."
 
-            aachanges = _parse_aachange(aachange_raw) if aachange_raw else []
+            aachanges = _parse_aachange(aachange_raw) if aachange_raw and aachange_raw != "." else []
 
             if not aachanges:
                 if _matches_filter(gene, None, target_genes, target_transcripts, gene_transcript_pairs, target_svtypes, svtype, min_af, af):
