@@ -63,7 +63,7 @@ def _check_command(cmd):
 def _get_read_length(bam_path):
     """Get read length from samtools stats."""
     result = subprocess.run(
-        ["samtools", "stats", bam_path],
+        ["samtools", "stats", "-@", "8", bam_path],
         capture_output=True, text=True,
     )
     for line in result.stdout.splitlines():
