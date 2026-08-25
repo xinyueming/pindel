@@ -356,9 +356,8 @@ def _matches_filter(gene, transcript, target_genes, target_transcripts, gene_tra
     transcript_base = _strip_version(transcript)
 
     if gene_transcript_pairs:
-        if gene in gene_transcript_pairs:
-            if transcript_base is None or transcript_base in gene_transcript_pairs[gene]:
-                return True
+        if gene in gene_transcript_pairs and transcript_base in gene_transcript_pairs[gene]:
+            return True
 
     if target_genes is not None and gene in target_genes:
         if not target_transcripts:
