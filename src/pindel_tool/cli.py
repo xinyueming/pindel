@@ -129,7 +129,7 @@ def _generate_config(bam_path, sample_name, output_path):
     """Generate pindel config file from BAM."""
     rl = _get_read_length(bam_path)
     median, mean = _get_insert_size(bam_path)
-    insert_size = max(median, rl)
+    insert_size = max(150, median, rl)
     with open(output_path, "w") as f:
         f.write(f"{bam_path}\t{insert_size}\t{sample_name}\n")
     return output_path
