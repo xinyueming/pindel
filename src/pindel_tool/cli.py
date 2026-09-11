@@ -215,7 +215,7 @@ def cmd_pindel2vcf(args):
 
 
 def cmd_anno(args):
-    """Run ANNOVAR table_annovar.pl for gene annotation."""
+    """Run ANNOVAR annotation (myannovar run, fallback to perl)."""
     rc = _check_file(args.input_vcf, "Input VCF")
     if rc:
         return rc
@@ -223,18 +223,32 @@ def cmd_anno(args):
     if rc:
         return rc
     out = args.out if args.out else os.path.splitext(os.path.basename(args.input_vcf))[0]
-    cmd = [
-        "perl",
-        _tool_path("annovar_scripts", "table_annovar.pl"),
-        args.input_vcf,
-        args.db_path,
-        "--buildver", args.buildver,
-        "--protocol", args.protocol,
-        "--operation", args.operation,
-        "--nastring", args.nastring,
-        "--outfile", out,
-        "--vcfinput",
-    ]
+    output_vcf = f"{out}.{args.buildver}_multianno.vcf"
+
+    if _check_command("myannovar"):
+        cmd = [
+            "myannovar", "run",
+            "-i", args.input_vcf,
+            "-o", output_vcf,
+            "--humandb", args.db_path,
+            "-b", args.buildver,
+            "--protocol", args.protocol,
+            "--operation", args.operation,
+            "--argument", "",
+        ]
+    else:
+        cmd = [
+            "perl",
+            _tool_path("annovar_scripts", "table_annovar.pl"),
+            args.input_vcf,
+            args.db_path,
+            "--buildver", args.buildver,
+            "--protocol", args.protocol,
+            "--operation", args.operation,
+            "--nastring", args.nastring,
+            "--outfile", out,
+            "--vcfinput",
+        ]
     return _run(cmd, "anno")
 
 
