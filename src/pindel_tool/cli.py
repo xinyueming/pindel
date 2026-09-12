@@ -14,6 +14,7 @@ Usage:
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 
@@ -369,6 +370,16 @@ def _strip_version(transcript):
     return transcript.split(".")[0] if "." in transcript else transcript
 
 
+def _strip_seq_after_del_dup(s):
+    """Remove nucleotide/amino acid sequence after del/dup (not delins).
+
+    e.g. c.990delG → c.990del, c.500dupC → c.500dup, c.100delinsA → unchanged.
+    """
+    if not s or s == ".":
+        return s
+    return re.sub(r"(del|dup)(?!ins)([A-Za-z]+)", r"\1", s)
+
+
 def _matches_filter(gene, transcript, target_genes, target_transcripts, gene_transcript_pairs, target_svtypes=None, svtype=None, min_af=None, af=None):
     """Check if a gene/transcript combo matches any of the filter criteria."""
     if target_genes is None and target_transcripts is None and not gene_transcript_pairs and not target_svtypes and min_af is None:
@@ -491,7 +502,7 @@ def _parse_vcf_records(vcf_path, target_genes, target_transcripts, gene_transcri
                     "REF": ref, "ALT": alt, "Gene": a_gene,
                     "Transcript": a_transcript, "SVTYPE": svtype,
                     "SVLEN": svlen, "Insertion": insertion,
-                    "CDS": a_cds, "AA": a_aa,
+                    "CDS": _strip_seq_after_del_dup(a_cds), "AA": _strip_seq_after_del_dup(a_aa),
                     "GT": gt, "AD": ad, "VD": vd, "DP": dp, "AF": af, "AR": ar,
                     "Sample": sample_name or ".",
                 })
