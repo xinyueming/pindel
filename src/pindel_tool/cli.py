@@ -234,7 +234,9 @@ def cmd_anno(args):
             "-b", args.buildver,
             "--protocol", args.protocol,
             "--operation", args.operation,
-            "--argument", "",
+            "--argument", "'-hgvs'",
+            "--no-polish",
+            "--keep-temp",
         ]
     else:
         cmd = [
